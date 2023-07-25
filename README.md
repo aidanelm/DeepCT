@@ -1,5 +1,5 @@
 # DeepCT
-A simple DICOM (CT, MRI, etc.) image classification framework that uses PyDicom and TensorFlow. Based on [this](https://www.tensorflow.org/tutorials/images/classification) TensorFlow tutorial.
+A simple DICOM (CT, MRI, etc.) image classification framework for Python that uses PyDicom and TensorFlow. Based on [this](https://www.tensorflow.org/tutorials/images/classification) TensorFlow tutorial.
 
 # How to Use
 Default variables are located beneath the imports at the top of DeepCT.py. These variables can be changed to fit your environment.
