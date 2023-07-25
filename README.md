@@ -4,7 +4,7 @@ A simple DICOM (CT, MRI, etc.) image classification framework for Python that us
 # How to Use
 Default variables are located beneath the imports at the top of DeepCT.py. These variables can be changed to fit your environment.
 
-To train a model, store classes of .dcm images in the directory associated with the dcm_dir variable. (The default is 'images_dcm'.) The classes must be in different subdirectories - for example, 'images_dcm/brain' would be one and 'images_dcm/lung' would be another. Batch size, number of epochs, etc. can be changed from the default variables. The model will be saved in the location associated with the model_path variable. (The default is 'saved_model.keras'. Note: .keras files are recommended over the legacy .h5 files.)
+To train a model, store classes of .dcm images in the directory associated with the dcm_dir variable. (The default is 'images_dcm'.) The classes must be in different subdirectories - for example, 'images_dcm/brain' would be one and 'images_dcm/lung' would be another. Batch size, number of epochs, etc. can be changed from the default variables. The model will be saved in the location associated with the model_path variable. (The default is 'saved_model.keras'. Note: .keras files are recommended over the legacy .h5 files.) The program uses a supervised learning process with 80% of images used for training and 20% used for validation.
 
 To predict the class of an image, change the "mode" variable from "train" to "predict." The path of the .dcm image to be classified should be stored in the dcm_path variable.
 
