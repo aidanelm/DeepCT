@@ -1,0 +1,11 @@
+# DICOM files
+*.dcm
+*.DCM
+
+# PNG files
+*.png
+*.PNG
+
+# Saved models
+*.h5
+*.keras
