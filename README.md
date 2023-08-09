@@ -14,6 +14,10 @@ Note: Versions more recent than those specified have not been tested with this s
 #### Python
 The latest version tested is Python 3.11.2.
 
+# pydicom
+```pip3 install pydicom```
+Used for working with .dcm/.dicom images. Tested version is 2.4.2.
+
 #### TensorFlow
 ```pip3 install tensorflow```
 
