@@ -1,201 +1,278 @@
 # Import all necessary modules
 import os
-import cv2 # OpenCV
-import pydicom # DICOM
+import argparse
 import numpy as np
 import shutil # File operations
 import pathlib # File operations
-import PIL # Images
 import tensorflow as tf
-from tensorflow import keras
+import tensorflow_io as tfio # DICOM support
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 
-# Change these variables as is necessary or convenient
-# Training
-dcm_dir = 'images_dcm/' # Input directory containing DICOM images
-png_dir = 'images_png/' # Output directory to save converted PNG images
-epochs = 2
-batch_size = 1
-# Prediction
-class_names = ['Brain', 'Lung'] # Alphabetized list of possible classes (for prediction only - should correspond with training classes)
-dcm_path = 'dcm_image.dcm' # image path for prediction
-# Both/Misc
-mode = 'train' # train or predict
-model_path = 'saved_model.keras'
-window_center = 50 # Window center for image normalization
-window_width = 350 # Window width for image normalization
-image_height = 512
-image_width = 512
+# Normalize DICOM images
+def window_image(image, window_center, window_width):
 
-# Helper function to normalize DICOM images
-def window_image(png_image, window_center, window_width, intercept, slope):
-    # Rescale the image
-    png_image = (png_image * slope + intercept)
+    # Assuming image is a TensorFlow tensor
+    img_min = window_center - window_width // 2
+    img_max = window_center + window_width // 2
+    image = tf.clip_by_value(image, clip_value_min=img_min, clip_value_max=img_max)
 
-    # Define minimum and maximum values based on window center and width
-    png_image_min = window_center - window_width
-    png_image_max = window_center + window_width
+    return image
 
-    # Clip values outside the window range
-    png_image[png_image < png_image_min] = png_image_min
-    png_image[png_image > png_image_max] = png_image_max
-
-    return png_image
-
-# Convert single DICOM to PNG
-def convert_image(dcm_path):
-
-    # Read the DICOM file
-    try:
-        dicom_ds = pydicom.read_file(dcm_path)
-    except FileNotFoundError:
-        print('Error: DICOM file not found. Please ensure the path contained in dcm_path is correct.')
-        exit()
-
-    # Get the image data
-    png_image = dicom_ds.pixel_array
-
-    # Get the intercept and slope for image rescaling, use default values if they are not provided
-    intercept = dicom_ds.RescaleIntercept if 'RescaleIntercept' in dicom_ds else -1024
-    slope = dicom_ds.RescaleSlope if 'RescaleSlope' in dicom_ds else 1
-
-    # Normalize the image
-    png_image = window_image(png_image, window_center, window_width, intercept, slope)
-
-    # Convert image data type to 8-bit unsigned integer
-    png_image = png_image.astype(np.uint8)
-    return png_image
-
-# Convert multiple DICOM to PNG
-def convert_batch_images(subdirectory):
-
-    # Get the list of all files in the DICOM directory
-    dcm_dir_files = [dcm_file for dcm_file in os.listdir(dcm_dir + subdirectory)]
-
-    # Process each file
-    for dcm_file in dcm_dir_files:
-
-        # Process only DICOM files
-        if dcm_file.lower().endswith('.dcm'):
-
-            # Get PNG image
-            png_image = convert_image(dcm_dir + subdirectory + dcm_file)
-
-            # Save the image in PNG format, replace original file extension '.dcm' with '.png'
-            cv2.imwrite(png_dir + subdirectory + dcm_file.lower().replace('.dcm', '.png'), png_image)
 
 # Train a model
-def train():
+def train(
+    dcm_dir,
+    epochs,
+    batch_size,
+    class_names,
+    window_center,
+    window_width,
+    image_height,
+    image_width,
+    model_path,
+):
 
-    # Create the PNG directory if it does not exist
-    try:
-        os.mkdir(png_dir)
+    # Check if directory exists, exit if it does not
+    if not os.path.isdir(dcm_dir):
+        print("Error: Training directory does not exist.")
+        return
 
-    # If it exists, remove all files and directories inside
-    except FileExistsError:
-        shutil.rmtree(png_dir) # Remove the directory and all its contents
-        os.mkdir(png_dir) # Recreate the directory
+    # Directory of input images
+    data_dir = pathlib.Path(dcm_dir)
 
-    # For each top-level directory (but not further subdirectory) in dcm_dir, convert all DICOM images
-    try:
-        for item in os.scandir(dcm_dir):
-            if item.is_dir():
-                subdirectory = str(item.path).split('/', 1)[-1] + '/' # Remove dcm_dir from path and add slash
-                os.mkdir(png_dir + subdirectory)
-                convert_batch_images(subdirectory) # Convert all DICOM in subdirectory to PNG
-    except FileNotFoundError:
-        print("Error: Please ensure that the directory in dcm_dir exists.")
-        shutil.rmtree(png_dir) # Delete created directory
-        exit()
+    # Decode DICOM image
+    def decode_dicom(file_path, window_center, window_width, image_height, image_width):
+        if not os.path.isfile(file_path):
+            print("Error: File does not exist.")
+            return None
 
-    # TensorFlow standard is data_dir for input images
-    data_dir = pathlib.Path(png_dir)
+        try:
 
-    # Create training and validation datasets (80/20 split)
-    train_ds = tf.keras.utils.image_dataset_from_directory(data_dir, validation_split = 0.2, subset = 'training', seed = 123, image_size = (image_height, image_width), batch_size = batch_size)
-    val_ds = tf.keras.utils.image_dataset_from_directory(data_dir, validation_split = 0.2, subset = 'validation', seed = 123, image_size = (image_height, image_width), batch_size = batch_size)
-    class_names = train_ds.class_names # Override global variable
+            # Read file and decode DICOM
+            image_bytes = tf.io.read_file(file_path)
+            image = tfio.image.decode_dicom_image(image_bytes, dtype=tf.uint16)
+
+            # Resize and normalize the image
+            image = window_image(image, window_center, window_width)
+            image = tf.image.resize(image, [image_height, image_width])
+            image = tf.cast(image, tf.float32) / 65535.0  # Normalize to [0, 1]
+
+            return image
+
+        except tf.errors.InvalidArgumentError as e:
+            print(f"Error decoding DICOM file {file_path}: {e}")
+            return None
+        except Exception as e:  # General exception catch
+            print(f"Unexpected error processing file {file_path}: {e}")
+            return None
+
+    # Count the number of images in the directory
+    image_count = len(list(data_dir.glob("*/*.dcm")))
+
+    # Create a TensorFlow dataset of file paths by listing all files in the specified directory and its subdirectories
+    list_ds = tf.data.Dataset.list_files(str(data_dir / "*/*"), shuffle=False)
+
+    # Shuffle the dataset while maintaining the order of elements across epochs
+    list_ds = list_ds.shuffle(image_count, reshuffle_each_iteration=False)
+
+    # Prepare the training dataset
+    train_ds = list_ds.map(
+        lambda x: tf.py_function(func=decode_dicom, inp=[x], Tout=tf.float32),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
 
     # Configure the dataset for performance
-    train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size = tf.data.AUTOTUNE)
-    val_ds = val_ds.cache().prefetch(buffer_size = tf.data.AUTOTUNE)
+    train_ds = (
+        train_ds.cache()
+        .shuffle(1000)
+        .batch(batch_size)
+        .prefetch(buffer_size=tf.data.AUTOTUNE)
+    )
 
-    # Standardize the data
-    normalization_layer = layers.Rescaling(1./255)
-    normalized_ds = train_ds.map(lambda x, y: (normalization_layer(x), y))
-    image_batch, labels_batch = next(iter(normalized_ds))
+    # Create the model (adjust layers as necessary)
+    model = Sequential(
+        [
+            layers.InputLayer(input_shape=(image_height, image_width, 1)),
+            layers.Rescaling(1.0 / 255),
+            layers.Conv2D(16, 3, padding="same", activation="relu"),
+            layers.MaxPooling2D(),
+            layers.Conv2D(32, 3, padding="same", activation="relu"),
+            layers.MaxPooling2D(),
+            layers.Conv2D(64, 3, padding="same", activation="relu"),
+            layers.MaxPooling2D(),
+            layers.Flatten(),
+            layers.Dense(128, activation="relu"),
+            layers.Dense(len(class_names)),
+        ]
+    )
 
-    # Create the model
-    model = Sequential([
-        layers.Rescaling(1./255, input_shape = (image_height, image_width, 3)),
-        layers.Conv2D(16, 3, padding = 'same', activation = 'relu'),
-        layers.MaxPooling2D(),
-        layers.Conv2D(32, 3, padding = 'same', activation = 'relu'),
-        layers.MaxPooling2D(),
-        layers.Conv2D(64, 3, padding = 'same', activation = 'relu'),
-        layers.MaxPooling2D(),
-        layers.Flatten(),
-        layers.Dense(128, activation = 'relu'),
-        layers.Dense(len(class_names))
-    ])
+    # Compile the model
+    model.compile(
+        optimizer="adam",
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=["accuracy"],
+    )
 
-    # Compile and train the model
-    model.compile(optimizer = 'adam', loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits = True), metrics = ['accuracy'])
-    history = model.fit(train_ds, validation_data = val_ds, epochs = epochs)
+    # Train the model
+    try:
+        model.fit(train_ds, epochs=epochs)
+    except:
+        print(
+            "Error: Training failed. Please ensure there are no issues with the provided model file path."
+        )
 
     # Save the model
-    model.save(model_path)
+    try:
+        model.save(model_path)
+    except:
+        print(
+            "Error: Model could not be saved. Please ensure there are no issues with the provided model file path."
+        )
 
-    # Delete all PNG files
-    shutil.rmtree(png_dir)
 
 # Predict from DICOM image
-def predict():
+def predict(
+    dcm_path,
+    model_path,
+    class_names,
+    window_center,
+    window_width,
+    image_height,
+    image_width,
+):
 
-    # Convert DCM to PNG
-    png_image = convert_image(dcm_path)
-
-    # Save the image in PNG format
-    png_path = dcm_path.lower().replace('.dcm', '.png')
-    cv2.imwrite(png_path, png_image)
-
-    # Load a saved model
-    try:
+    # Check if model exists, load if it does
+    if not os.path.isfile(model_path):
+        print("Error: Model does not exist.")
+        return
+    else:
         model = tf.keras.models.load_model(model_path)
-    except IOError:
-        print('I/O error. Please ensure that the file in model_path exists.')
-        os.remove(png_path) # Delete created PNG
-        exit()
 
-    # Load the PNG image into TensorFlow
-    img = tf.keras.utils.load_img(png_path, target_size = (image_height, image_width))
-    img_array = tf.keras.utils.img_to_array(img)
-    img_array = tf.expand_dims(img_array, 0) # Create a batch
+    # Check if DICOM image exists
+    if not os.path.isfile(dcm_path):
+        print("Error: DICOM image does not exist.")
+        return
+
+    # Read file and decode DICOM
+    image_bytes = tf.io.read_file(dcm_path)
+    image = tfio.image.decode_dicom_image(image_bytes, dtype=tf.uint16)
+
+    # Resize and normalize the image
+    image = window_image(image, window_center, window_width)
+    image = tf.image.resize(image, [image_height, image_width])
+    image = tf.cast(image, tf.float32) / 65535.0  # Normalize to [0, 1]
+    image = tf.expand_dims(image, 0)  # Create a batch dimension
 
     # Predict which class the image belongs to
-    predictions = model.predict(img_array)
-    score = tf.nn.softmax(predictions[0])
     try:
-        print('Class: {} | Confidence: {:.2f}%'.format(class_names[np.argmax(score)], 100 * np.max(score)))
-    except IndexError:
-        print('Error: Please ensure that the values in class_names correspond with the classes from the trained model.')
-        os.remove(png_path) # Delete created PNG
-        exit()
+        predictions = model.predict(image)
+    except:
+        print(
+            "Error: Prediction failed. Please ensure there are no issues with the provided model."
+        )
+        return
 
-    # Delete created PNG
-    os.remove(png_path)
+    # Print results with score
+    score = tf.nn.softmax(predictions[0])
+    print(
+        "Class: {} | Confidence: {:.2f}%".format(
+            class_names[np.argmax(score)], 100 * np.max(score)
+        )
+    )
+
 
 # Main function
 def main():
-    if mode == "train":
-        train()
-    elif mode == "predict":
-        predict()
+
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Train or predict DICOM images.")
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["train", "predict"],
+        default="train",
+        help="Mode to run the script in: train or predict.",
+    )
+    parser.add_argument(
+        "--dcm_dir",
+        type=str,
+        default="images_dcm/",
+        help="Directory containing DICOM images for training.",
+    )
+    parser.add_argument(
+        "--epochs", type=int, default=2, help="Number of training epochs."
+    )
+    parser.add_argument(
+        "--batch_size", type=int, default=1, help="Batch size for training."
+    )
+    parser.add_argument(
+        "--class_names",
+        nargs="+",
+        default=["Brain", "Lung"],
+        help="Space-separated list of class names for prediction (e.g., --class_names Brain Lung).",
+    )
+    parser.add_argument(
+        "--dcm_path",
+        type=str,
+        default="dcm_image.dcm",
+        help="Path to a DICOM image for prediction.",
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default="saved_model.keras",
+        help="Path to save or load the model.",
+    )
+    parser.add_argument(
+        "--window_center",
+        type=int,
+        default=50,
+        help="Window center for DICOM image normalization.",
+    )
+    parser.add_argument(
+        "--window_width",
+        type=int,
+        default=350,
+        help="Window width for DICOM image normalization.",
+    )
+    parser.add_argument(
+        "--image_height", type=int, default=512, help="Height of the images."
+    )
+    parser.add_argument(
+        "--image_width", type=int, default=512, help="Width of the images."
+    )
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Proceed with training or prediction
+    if args.mode == "train":
+        train(
+            args.dcm_dir,
+            args.epochs,
+            args.batch_size,
+            args.class_names,
+            args.window_center,
+            args.window_width,
+            args.image_height,
+            args.image_width,
+            args.model_path,
+        )
+    elif args.mode == "predict":
+        predict(
+            args.dcm_path,
+            args.model_path,
+            args.class_names,
+            args.window_center,
+            args.window_width,
+            args.image_height,
+            args.image_width,
+        )
     else:
         print("Error: Mode must be 'train' or 'predict'.")
-        exit() # Redundant (for now)
+
 
 # Call main function when run directly from Python interpreter (change this if running from another program)
-if __name__ == '__main__':
-	main()
+if __name__ == "__main__":
+    main()
