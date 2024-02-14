@@ -12,6 +12,11 @@ The latest version tested is Python 3.11.2.
 
 The latest tested version is 2.13.0. Many other dependencies, such as NumPy, should be installed along with TensorFlow. GPU support is also included if CUDA drivers are installed.
 
+#### TensorFlow I/O
+```pip3 install tensorflow-io==0.36.0```
+
+Used for working with DICOM images. The latest tested version is 0.36.0.
+
 #### OpenGL API
 ```apt install libgl1 libglib2.0-0```
 
