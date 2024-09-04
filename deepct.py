@@ -13,12 +13,14 @@ import tensorflow_io as tfio  # DICOM support
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 
-# Normalize a DICOM image based on window center and wiidth
+# Normalize a DICOM image based on window center and width
 def window_image(image: tf.Tensor, window_center: int, window_width: int) -> tf.Tensor:
 
     """
-    Inputs: Image tensor, window center and width numbers
-    Outputs: Normalized image tensor
+    @param image: tf.Tensor - The input image tensor.
+    @param window_center: int - The center of the window for normalization.
+    @param window_width: int - The width of the window for normalization.
+    @return: tf.Tensor - The normalized image tensor.
     """
 
     img_min = window_center - window_width // 2
@@ -31,8 +33,12 @@ def decode_dicom(file_path: str, window_center: int, window_width: int, image_he
                     image_width: int) -> tf.Tensor:
 
     """
-    Inputs: Path to file, window center + width, image height + width
-    Outputs: Decorded and normalized image tensor
+    @param file_path: str - Path to the DICOM file.
+    @param window_center: int - The center of the window for normalization.
+    @param window_width: int - The width of the window for normalization.
+    @param image_height: int - Desired height of the output image.
+    @param image_width: int - Desired width of the output image.
+    @return: tf.Tensor - The decoded and normalized image tensor.
     """
 
     # Ensure file exists
@@ -66,9 +72,16 @@ def train(
 ) -> None:
 
     """
-    Inputs: Directory of images, number of training epochs, batch size, class names,
-        window center + width, image height + width, path to save model
-    Outputs: None (Saves model)
+    @param dcm_dir: str - Directory containing DICOM images for training.
+    @param num_epochs: int - Number of training epochs.
+    @param batch_size: int - Batch size for training.
+    @param class_names: List[str] - List of class names for prediction.
+    @param window_center: int - The center of the window for normalization.
+    @param window_width: int - The width of the window for normalization.
+    @param image_height: int - Desired height of the input images.
+    @param image_width: int - Desired width of the input images.
+    @param model_path: str - Path to save the trained model.
+    @return: None - Saves the trained model.
     """
 
     # Load directory of DICOM images
@@ -163,8 +176,14 @@ def predict(
 ) -> None:
 
     """
-    Inputs: DICOM + model paths, class names, window center + width, image height + width
-    Outputs: None
+    @param dcm_path: str - Path to the DICOM image for prediction.
+    @param model_path: str - Path to the saved model.
+    @param class_names: List[str] - List of class names for prediction.
+    @param window_center: int - The center of the window for normalization.
+    @param window_width: int - The width of the window for normalization.
+    @param image_height: int - Desired height of the input image.
+    @param image_width: int - Desired width of the input image.
+    @return: None - Prints the class and confidence of the prediction.
     """
 
     # Load saved model
