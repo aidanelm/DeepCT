@@ -1,4 +1,4 @@
-NOTE (June 2026): This project is no longer active; it's an attempt from my beginner Python days (in high school!) to create a DICOM classification framework with TensorFlow. Big thanks to user itsrbpandit for forking the original repository - I (foolishy) deleted the code after, and it otherwise would have been lost. For a more modern solution, please see the TensorFlow [documentation](https://www.tensorflow.org/io/tutorials/dicom) on how to natively work with DICOM images.
+NOTE (June 2026): This project is no longer active; it's an attempt from my beginner Python days (in high school, 2020!) to create a DICOM classification framework with TensorFlow. Big thanks to user itsrbpandit for forking the original repository - I (foolishly) deleted the code after, and it otherwise would have been lost. For a more modern solution, please see the TensorFlow [documentation](https://www.tensorflow.org/io/tutorials/dicom) on how to natively work with DICOM images.
 
 # DeepCT
 
